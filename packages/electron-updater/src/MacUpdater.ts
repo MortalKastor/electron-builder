@@ -13,6 +13,7 @@ export class MacUpdater extends AppUpdater {
   private readonly nativeUpdater: AutoUpdater = require("electron").autoUpdater
 
   private updateInfoForPendingUpdateDownloadedEvent: UpdateDownloadedEvent | null = null
+  private squirrelDownloadedUpdate: boolean = false
 
   constructor(options?: AllPublishOptions, app?: AppAdapter) {
     super(options, app)
@@ -25,6 +26,7 @@ export class MacUpdater extends AppUpdater {
       const updateInfo = this.updateInfoForPendingUpdateDownloadedEvent
       this.updateInfoForPendingUpdateDownloadedEvent = null
       this.dispatchUpdateDownloaded(updateInfo!!)
+      this.squirrelDownloadedUpdate = true
     })
   }
 
@@ -123,14 +125,31 @@ export class MacUpdater extends AppUpdater {
             })
 
             this.nativeUpdater.once("error", reject)
-            this.nativeUpdater.checkForUpdates()
+
+            if (this.autoInstallOnAppQuit){
+              // This will trigger fetching and installing the file on Squirrel side
+              this.nativeUpdater.checkForUpdates()
+            }
           })
         })
       }
     })
   }
 
-  quitAndInstall(): void {
-    this.nativeUpdater.quitAndInstall()
+  quitAndInstall(isSilent: boolean = false, isForceRunAfter: boolean = false): void {
+    this._logger.info(`Install on explicit quitAndInstall`)
+    
+    if (this.squirrelDownloadedUpdate) {
+      // Update already fetched by squirrel, it's ready to install
+      this.nativeUpdater.quitAndInstall()
+    } else {
+      // Quit and install as soon as Squirrel get the update
+      this.nativeUpdater.on("update-downloaded", () => {
+        this.nativeUpdater.quitAndInstall()
+      })
+
+      // And trigger the update
+      this.nativeUpdater.checkForUpdates()
+    }
   }
 }
